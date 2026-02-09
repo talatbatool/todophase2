@@ -1,0 +1,160 @@
+# Phase II Implementation Tasks
+
+This document breaks down the technical plan into a series of granular, actionable tasks.
+
+---
+
+## 1. Backend Setup
+
+### **Task 1.1: Initialize FastAPI Project Structure**
+-   **Description:** Set up the foundational directory structure, virtual environment, and dependencies for the backend service.
+-   **Acceptance Criteria:**
+    -   [ ] A `backend` directory is created with a `src` subdirectory.
+    -   [ ] A Python virtual environment is created and activated.
+    -   [ ] A `requirements.txt` or `pyproject.toml` file lists `fastapi`, `uvicorn`, `sqlmodel`, `psycopg2-binary`, `python-jose[cryptography]`, and `passlib[bcrypt]`.
+    -   [ ] A basic `backend/src/main.py` exists that runs a FastAPI server.
+    -   [ ] Running `uvicorn main:app` successfully starts the server and a "Hello World" message is visible at `http://127.0.0.1:8000`.
+
+### **Task 1.2: Define SQLModel and Pydantic Models**
+-   **Description:** Create the data schema for the application using SQLModel for database tables and Pydantic for API data transfer objects (DTOs).
+-   **Acceptance Criteria:**
+    -   [ ] A `backend/src/models.py` file is created.
+    -   [ ] `User` and `Task` SQLModel classes are defined as per the technical plan, including the `Relationship` between them.
+    -   [ ] Pydantic models (`UserCreate`, `UserRead`, `TaskCreate`, `TaskRead`, `TaskUpdate`) are defined for API input and output validation.
+    -   [ ] The code is type-hinted and passes static analysis.
+
+### **Task 1.3: Establish Database Connection with Neon**
+-   **Description:** Configure the FastAPI application to connect to the Neon serverless PostgreSQL database.
+-   **Acceptance Criteria:**
+    -   [ ] A `backend/src/database.py` file is created.
+    -   [ ] A function exists to create and return a SQLModel engine instance.
+    -   [ ] The database connection string is loaded securely from an environment variable (e.g., using a `.env` file).
+    -   [ ] An application startup event handler is implemented to create all database tables based on the SQLModels if they don't already exist.
+    -   [ ] The application successfully connects to the Neon database on startup without errors.
+
+---
+
+## 2. Auth Integration (Backend)
+
+### **Task 2.1: Implement User Registration and Login Logic**
+-   **Description:** Create the backend logic and endpoints for user account creation and password-based authentication.
+-   **Acceptance Criteria:**
+    -   [ ] `passlib` is used to hash passwords before storing them in the database.
+    -   [ ] A `/api/auth/register` endpoint is created that accepts a `UserCreate` payload, hashes the password, and saves the new user to the database.
+    -   [ ] A utility function `verify_password` correctly compares a plaintext password with a hashed one.
+    -   [ ] A utility function exists to query the database for a user by email.
+
+### **Task 2.2: Implement JWT Generation and Token Endpoint**
+-   **Description:** Create an endpoint that issues a JWT to a user upon successful authentication.
+-   **Acceptance Criteria:**
+    -   [ ] A `/api/auth/token` endpoint is created that accepts `OAuth2PasswordRequestForm` data.
+    -   [ ] The endpoint authenticates the user using the functions from Task 2.1.
+    -   [ ] Upon successful authentication, a JWT is created containing the user's email (or ID) as the `sub` claim.
+    -   [ ] The JWT is signed with a secret key loaded from an environment variable.
+    -   [ ] The endpoint returns the `access_token` and `token_type`.
+
+### **Task 2.3: Create JWT Verification Dependency**
+-   **Description:** Implement a reusable FastAPI dependency to protect endpoints by requiring a valid JWT.
+-   **Acceptance Criteria:**
+    -   [ ] A `backend/src/dependencies.py` file is created.
+    -   [ ] A `get_current_user` dependency function is implemented.
+    -   [ ] The dependency extracts the JWT from the `Authorization: Bearer` header.
+    -   [ ] It decodes and validates the token's signature and expiration.
+    -   [ ] It returns the user object or identifier if the token is valid.
+    -   [ ] It raises a `401 Unauthorized` `HTTPException` if the token is missing, invalid, or expired.
+
+---
+
+## 3. API Implementation
+
+### **Task 3.1: Create Secure CRUD Endpoints for Tasks**
+-   **Description:** Implement the full set of RESTful endpoints for task management, ensuring they are secure and respect data ownership.
+-   **Acceptance Criteria:**
+    -   [ ] A new `APIRouter` for tasks is created in `backend/src/routers/tasks.py`.
+    -   [ ] All endpoints (`POST /`, `GET /`, `PUT /{id}`, `DELETE /{id}`) are protected using the `get_current_user` dependency.
+    -   [ ] `POST /api/tasks`: Creates a task and correctly associates it with the logged-in user's ID (`owner_id`).
+    -   [ ] `GET /api/tasks`: Returns a list of tasks belonging **only** to the authenticated user.
+    -   [ ] `PUT /api/tasks/{task_id}`: Allows a user to update a task only if they are the owner.
+    -   [ ] `DELETE /api/tasks/{task_id}`: Allows a user to delete a task only if they are the owner.
+    -   [ ] An appropriate HTTP status code (e.g., 403 Forbidden or 404 Not Found) is returned if a user tries to access or modify another user's task.
+
+---
+
+## 4. Frontend Setup
+
+### **Task 4.1: Initialize Next.js Project**
+-   **Description:** Set up the frontend project using Next.js with TypeScript and Tailwind CSS.
+-   **Acceptance Criteria:**
+    -   [ ] A `frontend` directory is created.
+    -   [ ] A new Next.js project is initialized using `create-next-app` with the App Router.
+    -   [ ] TypeScript and Tailwind CSS are enabled during setup.
+    -   [ ] The default Next.js application runs successfully via `npm run dev`.
+
+### **Task 4.2: Install and Configure Shadcn UI**
+-   **Description:** Integrate the Shadcn UI component library into the Next.js project.
+-   **Acceptance Criteria:**
+    -   [ ] The `shadcn-ui` CLI is used to initialize the project.
+    -   [ ] A `components.json` file is created and configured.
+    -   [ ] At least three base components (`Button`, `Input`, `Card`) are installed and can be used in a test page without errors.
+    -   [ ] The application's global CSS is correctly configured as per Shadcn UI's requirements.
+
+### **Task 4.3: Integrate Better Auth Client**
+-   **Description:** Set up the Better Auth provider to manage authentication state across the frontend application.
+-   **Acceptance Criteria:**
+    -   [ ] The Better Auth React package is added as a dependency.
+    -   [ ] The root layout (`/app/layout.tsx`) is wrapped with the `AuthProvider` from the library.
+    -   [ ] The provider is configured with the necessary backend URLs and settings.
+
+---
+
+## 5. Frontend UI
+
+### **Task 5.1: Build Public Landing Page**
+-   **Description:** Create a welcoming, responsive page for unauthenticated users.
+-   **Acceptance Criteria:**
+    -   [ ] The content of `/app/page.tsx` is replaced with a custom landing page design.
+    -   [ ] The page includes a clear call-to-action with "Sign In" and "Sign Up" buttons.
+    -   [ ] The design is modern, minimalistic, and responsive on both mobile and desktop screens.
+    -   [ ] The buttons use Next.js's `<Link>` component to navigate to the auth pages.
+
+### **Task 5.2: Build Authentication Forms**
+-   **Description:** Create the UI for user sign-up and sign-in.
+-   **Acceptance Criteria:**
+    -   [ ] Pages are created at `/app/(auth)/sign-up/page.tsx` and `/app/(auth)/sign-in/page.tsx`.
+    -   [ ] Forms are built using Shadcn `Card`, `Input`, `Label`, and `Button` components.
+    -   [ ] Form state is managed using React hooks (e.g., `useState`).
+    -   [ ] Basic client-side validation (e.g., for email format) is present.
+
+### **Task 5.3: Build Dashboard UI Shell**
+-   **Description:** Create the main authenticated view, including navigation and layouts for task management.
+-   **Acceptance Criteria:**
+    -   [ ] A protected route group is created for the dashboard at `/app/(main)/dashboard/page.tsx`.
+    -   [ ] A layout at `/app/(main)/layout.tsx` includes a persistent navigation bar with the app logo and a "Logout" button.
+    -   [ ] The dashboard page contains a skeleton UI (loading state) for the task list.
+    -   [ ] An "Add Task" button is prominently displayed on the dashboard.
+    -   [ ] The dashboard layout is responsive.
+
+---
+
+## 6. Integration
+
+### **Task 6.1: Connect Frontend Auth to Backend**
+-   **Description:** Wire up the authentication forms to communicate with the backend API and manage user sessions.
+-   **Acceptance Criteria:**
+    -   [ ] An API client/wrapper is created in `frontend/src/lib/api.ts` to handle `fetch` requests.
+    -   [ ] The Sign Up form successfully calls the `POST /api/auth/register` endpoint.
+    -   [ ] The Sign In form successfully calls the `POST /api/auth/token` endpoint.
+    -   [ ] Upon successful login, the returned JWT is stored using the Better Auth client library.
+    -   [ ] The user is programmatically redirected to `/dashboard` on successful login/registration.
+    -   [ ] The Logout button clears the stored JWT and redirects the user to the landing page.
+    -   [ ] The API client is configured to add the `Authorization: Bearer <token>` header to all subsequent requests.
+
+### **Task 6.2: Connect Dashboard to Backend Task API**
+-   **Description:** Make the dashboard fully interactive by connecting it to the backend's task management API.
+-   **Acceptance Criteria:**
+    -   [ ] The dashboard page fetches tasks from `GET /api/tasks` when it loads.
+    -   [ ] The skeleton UI is displayed during the fetch, and the task list is rendered on success.
+    -   [ ] The "Add Task" button opens a form/modal that calls `POST /api/tasks` and updates the task list in the UI.
+    -   [ ] "Edit," "Delete," and "Complete" actions on each task call the corresponding `PUT` and `DELETE` endpoints.
+    -   [ ] The UI updates correctly after each CRUD operation.
+    -   [ ] A toaster notification system (e.g., `react-hot-toast`) is installed and used to provide feedback for all API actions (e.g., "Task created successfully," "Error: Could not delete task").

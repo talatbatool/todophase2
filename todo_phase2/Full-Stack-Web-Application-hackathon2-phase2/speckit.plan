@@ -1,0 +1,197 @@
+# Technical Architecture Plan: Phase II
+
+This document outlines the technical architecture for the full-stack todo application, based on the requirements and constitution.
+
+## 1. Database Schema (SQLModel)
+
+We will use SQLModel for ORM operations. The schema defines two main tables: `User` and `Task`.
+
+-   **`User`**: Stores user information. While Better Auth may handle some user data, we need a corresponding table in our database to establish relationships.
+-   **`Task`**: Stores task information, with a direct foreign key relationship to the `User` who owns it.
+
+### SQLModel Class Definitions
+
+```python
+# backend/src/models.py
+
+from typing import List, Optional
+from sqlmodel import Field, Relationship, SQLModel
+import datetime
+
+class UserBase(SQLModel):
+    email: str = Field(unique=True, index=True)
+
+class User(UserBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    hashed_password: str
+    
+    tasks: List["Task"] = Relationship(back_populates="owner")
+
+class UserCreate(UserBase):
+    password: str
+
+class UserRead(UserBase):
+    id: int
+
+
+class TaskBase(SQLModel):
+    title: str = Field(index=True)
+    description: Optional[str] = None
+    is_completed: bool = Field(default=False)
+
+class Task(TaskBase, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    created_at: datetime.datetime = Field(default_f=datetime.datetime.utcnow)
+    
+    owner_id: int = Field(foreign_key="user.id")
+    owner: User = Relationship(back_populates="tasks")
+
+class TaskCreate(TaskBase):
+    pass
+
+class TaskRead(TaskBase):
+    id: int
+    created_at: datetime.datetime
+    owner_id: int
+
+class TaskUpdate(SQLModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_completed: Optional[bool] = None
+```
+
+## 2. API Architecture (FastAPI)
+
+The backend will be a RESTful API built with FastAPI. It will expose endpoints for authentication and task management. All task-related endpoints will be protected and require a valid JWT.
+
+### JWT Dependency Injection
+
+We'll create a reusable dependency to verify the JWT and extract the current user's identity.
+
+```python
+# backend/src/dependencies.py
+
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from jose import JWTError, jwt
+from pydantic import BaseModel
+from . import models
+
+# Configure this with your actual secret key and algorithm
+SECRET_KEY = "YOUR_SECRET_KEY" 
+ALGORITHM = "HS256"
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+class TokenData(BaseModel):
+    email: Optional[str] = None
+
+async def get_current_user(token: str = Depends(oauth2_scheme)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email: str = payload.get("sub") # Assuming 'sub' claim holds the email
+        if email is None:
+            raise credentials_exception
+        token_data = TokenData(email=email)
+    except JWTError:
+        raise credentials_exception
+    
+    # In a real app, you would fetch the user from the database here
+    # For this plan, we'll simulate it.
+    user = {"email": token_data.email} # Replace with actual DB call
+    if user is None:
+        raise credentials_exception
+    return user
+```
+
+### API Endpoints
+
+-   **Auth Endpoints (Conceptual - Handled by FastAPI auth logic)**
+    -   `POST /api/auth/token`: Takes email/password, returns JWT.
+    -   `POST /api/auth/register`: Creates a new user.
+
+-   **Task Management Endpoints**
+    -   `GET /api/tasks`
+        -   **Description:** Get all tasks for the currently authenticated user.
+        -   **Auth:** Required.
+        -   **Response:** `List[TaskRead]`
+    -   `POST /api/tasks`
+        -   **Description:** Create a new task for the authenticated user.
+        -   **Auth:** Required.
+        -   **Request Body:** `TaskCreate`
+        -   **Response:** `TaskRead`
+    -   `GET /api/tasks/{task_id}`
+        -   **Description:** Get a single task by ID. Must belong to the user.
+        -   **Auth:** Required.
+        -   **Response:** `TaskRead`
+    -   `PUT /api/tasks/{task_id}`
+        -   **Description:** Update a task by ID. Must belong to the user.
+        -   **Auth:** Required.
+        -   **Request Body:** `TaskUpdate`
+        -   **Response:** `TaskRead`
+    -   `DELETE /api/tasks/{task_id}`
+        -   **Description:** Delete a task by ID. Must belong to the user.
+        -   **Auth:** Required.
+        -   **Response:** `{"message": "Task deleted"}`
+
+## 3. Frontend Architecture (Next.js & Shadcn UI)
+
+The frontend will use Next.js with the App Router for a modern, component-based architecture.
+
+### Directory Structure
+
+```
+frontend/src/
+├── app/
+│   ├── (auth)/             # Group for auth pages
+│   │   ├── sign-in/page.tsx
+│   │   └── sign-up/page.tsx
+│   ├── (main)/             # Group for main app pages
+│   │   ├── dashboard/
+│   │   │   ├── components/  # Dashboard-specific components
+│   │   │   │   ├── task-list.tsx
+│   │   │   │   └── create-task-form.tsx
+│   │   │   └── page.tsx     # Main dashboard view
+│   │   └── layout.tsx       # Layout for authenticated users (e.g., with navbar)
+│   ├── layout.tsx          # Root layout
+│   └── page.tsx            # Landing page for unauthenticated users
+├── components/
+│   ├── providers/          # Context providers (e.g., AuthProvider)
+│   │   └── auth-provider.tsx
+│   ├── shared/             # General-purpose shared components
+│   │   ├── navbar.tsx
+│   │   └── toaster.tsx
+│   └── ui/                 # Shadcn UI components (button, input, etc.)
+├── lib/
+│   ├── api.ts              # Centralized API fetcher/wrapper
+│   └── utils.ts            # Utility functions
+└── styles/
+    └── globals.css         # Global styles
+```
+
+### Key Components
+
+-   **/app/page.tsx**: The public landing page.
+-   **/app/dashboard/page.tsx**: The main view for logged-in users, displaying their tasks. It will fetch data from the `/api/tasks` endpoint.
+-   **components/providers/auth-provider.tsx**: A client-side context provider that wraps the application to manage authentication state, user info, and the JWT. It will be responsible for providing this data to other components.
+-   **lib/api.ts**: An API client (e.g., using Axios or a custom `fetch` wrapper) that automatically attaches the `Authorization` header to outgoing requests.
+
+## 4. Authentication Flow
+
+The authentication flow connects the Better Auth frontend components with our FastAPI backend.
+
+1.  **User Action:** The user navigates to the sign-in or sign-up page on the Next.js app.
+2.  **Frontend Authentication:** The user enters their credentials into the UI provided by the Better Auth library. Better Auth handles the direct communication with its own authentication service to validate credentials.
+3.  **JWT Retrieval:** Upon successful authentication, the Better Auth library returns a JWT (JSON Web Token) to the frontend application.
+4.  **Token Storage:** The `auth-provider.tsx` component securely stores this JWT. For web applications, this is typically in an `HttpOnly` cookie for better security, or `localStorage` for simplicity.
+5.  **API Request Interception:** A custom API client (`lib/api.ts`) is configured to act as an interceptor. Before any request is sent to our FastAPI backend (e.g., to `/api/tasks`), this client retrieves the JWT from storage.
+6.  **Attaching JWT to Header:** The interceptor attaches the JWT to the `Authorization` header of the request, using the `Bearer` scheme.
+    -   Example Header: `Authorization: Bearer <the_jwt_token>`
+7.  **Backend Verification:** The FastAPI endpoint receives the request. The `Depends(get_current_user)` dependency is triggered. It extracts the token from the `Authorization` header, decodes it, verifies its signature and expiration, and extracts the user's identity (e.g., email from the `sub` claim).
+8.  **Protected Logic Execution:** If the token is valid, the user's identity is passed to the endpoint function, which then proceeds to execute the business logic (e.g., fetching tasks only for that user). If the token is invalid, the dependency raises a `401 Unauthorized` HTTP exception.
+9.  **Logout:** When the user logs out, the frontend simply deletes the JWT from its storage and redirects the user to the landing page. Subsequent API calls will fail because they will not have a valid token.

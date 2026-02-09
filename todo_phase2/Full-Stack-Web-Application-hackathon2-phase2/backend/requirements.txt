@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+sqlmodel
+psycopg2-binary
+python-jose[cryptography]
+passlib[bcrypt]
+python-dotenv
+fastapi-cors
+python-multipart
+bcrypt==4.0.1
